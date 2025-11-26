@@ -1,0 +1,127 @@
+/* === VARIABLE FONT DEFINITIONS — ALL FONTS ADDED === */
+
+
+@font-face {
+    font-family: "WeAppealVariable";
+    src: url("./assets/WeAppealVariable.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+  
+  @font-face {
+    font-family: "WeSpoliaVariable";
+    src: url("./assets/WeSpoliaVariable.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+  
+  @font-face {
+    font-family: "WeSpurOutlineVariable";
+    src: url("./assets/WeSpurOutlineVariable.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+  
+  @font-face {
+    font-family: "WeSpurVariable";
+    src: url("./assets/WeSpurVariable.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+  
+  @font-face {
+    font-family: "WeStacksVariable";
+    src: url("./assets/WeStacksVariable.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+  
+  @font-face {
+    font-family: "WeSuperGolfVariable";
+    src: url("./assets/WeSuperGolfVariable.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+  
+  @font-face {
+    font-family: "WeTravelogueVariableRoman";
+    src: url("./assets/WeTravelogueVariableRoman.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+  
+  
+  /* === GLOBAL STYLES === */
+  
+  :root {
+    --pad: 12px;
+  }
+  
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #ffffff;
+    overflow: hidden;
+    font-synthesis-weight: none; 
+  }
+  
+  #vizText {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    text-align: center;
+  
+    font-family: "./assets/WeSuperGolfVariable", system-ui, sans-serif;
+    font-variation-settings: "wght" 400;
+    font-size: clamp(36px, 12vw, 160px);
+  
+    letter-spacing: 0px;
+    color: hsl(210 70% 40%);
+    transform: translateZ(0) scale(1);
+    line-height: 1;
+  
+    will-change: transform, letter-spacing, color, font-variation-settings;
+  }
+  
+  /* Buttons */
+  button {
+    z-index: 10 !important;
+    position: relative !important;
+    margin: 0 var(--pad) var(--pad) 0;
+    padding: 8px 12px;
+    border: 1px solid #e3e3e6;
+    border-radius: 10px;
+    background: #fff;
+    font: 500 14px/1.1 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    cursor: pointer;
+  }
+  button[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .p5Canvas + * {
+    position: fixed !important;
+    left: var(--pad);
+    top: var(--pad);
+    z-index: 5;
+  }
+  
+  canvas.p5Canvas {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+  #vizText { 
+    z-index: 3; 
+  }
+  
