@@ -8,35 +8,42 @@
   } */
 
   .background {
-      position: absolute;
-      margin: auto;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      width:auto;
-      height: 100%;
-  }
-
-  .spiderhorse {
     position: absolute;
     margin: auto;
-    /* top: 10; */
+    top: 0;
     left: 0;
     right: 0;
     bottom: 0;
     width:auto;
-    height: 60%;
-    z-index:3;
-    transform: translateY(13%);
+    height: 100%;
 }
-  
 
-  html, body {
-    margin: 0;
-    /* height: 100%; */
-    background: #000000;
-    /* overflow: hidden; */
-    /* font-synthesis-weight: none;  */
-  }
-  
+.spiderhorse {
+  position: absolute;
+  margin: auto;
+  /* top: 10; */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width:auto;
+  height: 62%;
+  z-index:3;
+  transform: translateY(13%);
+}
+
+
+html, body {
+  margin: 0;
+  /* height: 100%; */
+  background: #000000;
+  /* overflow: hidden; */
+  /* font-synthesis-weight: none;  */
+}
+
+@font-face {
+  font-family: "WeStacksVariable";
+  src: url("../assets/WeStacksVariable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
