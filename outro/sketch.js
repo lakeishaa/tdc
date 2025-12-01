@@ -63,6 +63,16 @@ const STAR_APPEAR_INTERVAL_SEC = 1.0;
 // Base star font size in px (you can tweak or make it responsive)
 const STAR_BASE_FONT_PX = 80;
 
+// <<< GLOBAL DRAWING TRANSFORM (EDIT THESE) >>>
+// Overall scale for the whole star layout
+const DRAWING_SCALE = 1.4;   // 1.0 = original size, >1 = bigger, <1 = smaller
+
+// Where the *center* of the layout sits, as a fraction of the screen
+// X: 0 = left, 0.5 = center, 1 = right
+// Y: 0 = top, 0.5 = center, 1 = bottom
+const DRAWING_TARGET_X_RATIO = 0.5;  // center horizontally
+const DRAWING_TARGET_Y_RATIO = 0.4;  // bottom edge (try 0.85–0.9 if you want slightly above bottom)
+
 // ============================================================================
 // === MIC A → SHPE MAPPING CONTROLS =========================================
 
@@ -74,25 +84,6 @@ const MIC_A_RMS_MAX = 0.15;
 // Quietest → SHPE 3, Loudest → SHPE 0 (reversed)
 const MIC_A_SHPE_QUIET = 3.0; // quiet → more "weight"
 const MIC_A_SHPE_LOUD  = 0.0; // loud  → less "weight"
-
-// If your axis is actually 'wght' 0–3 instead of 'SHPE',
-// change 'SHPE' to 'wght' in updateMicADesign() and when creating stars.
-
-// // ============================================================================
-// // === MIC A → SHPE MAPPING CONTROLS =========================================
-
-// // <<< Mic A RMS range max (edit this)
-// // RMS 0 → quietest, RMS MIC_A_RMS_MAX → "loudest" we care about
-// const MIC_A_RMS_MAX = 0.15;
-
-// // <<< Quietest / loudest SHPE values for Mic A (edit these)
-// // Quietest → SHPE 3, Loudest → SHPE 0 (reversed)
-// const MIC_A_SHPE_QUIET = 3.0; // quiet → more "weight"
-// const MIC_A_SHPE_LOUD  = 0.0; // loud  → less "weight"
-
-// // If your axis is actually 'wght' 0–3 instead of 'SHPE',
-// // change 'SHPE' to 'wght' in updateMicADesign() and when creating stars.
-// // ============================================================================
 
 // Each star:
 // { x, y, scale, createdAt, element, active, opacity }
@@ -386,7 +377,6 @@ function prepareStarSlots() {
       const centerY = marginY + (row + 0.5) * cellH;
 
       // --- JITTER INSIDE EACH CELL (MORE RANDOM X/Y) -----------------------
-      // Max offset in each direction is cellW * STAR_JITTER_X_RATIO, etc.
       const maxJitterX = cellW * STAR_JITTER_X_RATIO;
       const maxJitterY = cellH * STAR_JITTER_Y_RATIO;
 
@@ -400,6 +390,42 @@ function prepareStarSlots() {
     }
   }
 
+  // === APPLY GLOBAL DRAWING SCALE + ALIGNMENT ==============================
+  // Compute bounding box of the jittered layout
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  slots.forEach(p => {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  });
+
+  const layoutCenterX = (minX + maxX) * 0.5;
+  const layoutCenterY = (minY + maxY) * 0.5;
+
+  const targetCenterX = windowWidth  * DRAWING_TARGET_X_RATIO;
+  const targetCenterY = windowHeight * DRAWING_TARGET_Y_RATIO;
+
+  const offsetX = targetCenterX - layoutCenterX;
+  const offsetY = targetCenterY - layoutCenterY;
+
+  slots = slots.map(p => {
+    const dx = p.x - layoutCenterX;
+    const dy = p.y - layoutCenterY;
+
+    // Scale around the layout center
+    const scaledX = layoutCenterX + dx * DRAWING_SCALE;
+    const scaledY = layoutCenterY + dy * DRAWING_SCALE;
+
+    // Then shift so the center moves to the target
+    return {
+      x: scaledX + offsetX,
+      y: scaledY + offsetY
+    };
+  });
+
+  // Shuffle and limit to MAX_STARS
   shuffle(slots, true);
   slots = slots.slice(0, MAX_STARS);
 
@@ -446,7 +472,6 @@ function prepareStarSlots() {
   });
 }
 
-
 function updateStars() {
   if (!starsSequenceActive) return;
 
@@ -462,7 +487,7 @@ function updateStars() {
 
       if (star.element) {
         const centerX = windowWidth / 2;
-        const centerY = windowHeight; // bottom center
+        const centerY = windowHeight; // bottom center for rotation reference
         const dx = centerX - star.x;
         const dy = centerY - star.y;
 
