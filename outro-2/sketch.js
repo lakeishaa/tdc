@@ -58,7 +58,7 @@ const STAR_SCALE_MAX = 0.7;  // MAX star scale (smaller)
 const STAR_FADE_DURATION_SEC = 0.6;
 
 // How often a new star appears (seconds)
-const STAR_APPEAR_INTERVAL_SEC = 1.0;
+const STAR_APPEAR_INTERVAL_SEC = 0.4;
 
 // Base star font size in px (you can tweak or make it responsive)
 const STAR_BASE_FONT_PX = 80;

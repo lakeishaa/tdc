@@ -58,14 +58,14 @@ const STAR_SCALE_MAX = 0.7;  // MAX star scale (smaller)
 const STAR_FADE_DURATION_SEC = 0.6;
 
 // How often a new star appears (seconds)
-const STAR_APPEAR_INTERVAL_SEC = 1.0;
+const STAR_APPEAR_INTERVAL_SEC = 0.4;
 
 // Base star font size in px (you can tweak or make it responsive)
 const STAR_BASE_FONT_PX = 80;
 
 // <<< GLOBAL DRAWING TRANSFORM (EDIT THESE) >>>
 // Overall scale for the whole star layout
-const DRAWING_SCALE = 1.4;   // 1.0 = original size, >1 = bigger, <1 = smaller
+const DRAWING_SCALE = 1.3;   // 1.0 = original size, >1 = bigger, <1 = smaller
 
 // Where the *center* of the layout sits, as a fraction of the screen
 // X: 0 = left, 0.5 = center, 1 = right
