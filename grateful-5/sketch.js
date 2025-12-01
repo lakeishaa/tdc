@@ -12,11 +12,7 @@ let panelVisible = true;
 
 // NEW: sensitivity slider UI + value
 let sensSlider, sensLabel;
-
-// <<< CHANGE THIS to set the *default* Mic A sensitivity slider value
-const DEFAULT_MIC_A_SENS = 0.51; // e.g. 2.0 = twice as reactive
-
-let micASensitivity = DEFAULT_MIC_A_SENS; // multiplier for Mic A loudness
+let micASensitivity = 1.0; // multiplier for Mic A loudness
 
 let devices = [];
 let streamA = null, streamB = null;
@@ -41,38 +37,42 @@ let BASE_FONT_RATIO = 0.14;
 // Maximum base font size in pixels (cap so it doesn’t get too huge on big screens)
 let BASE_FONT_MAX_PX = 160;
 
-// Starting scale when animation begins (1.0 = normal size)
-// Smaller value = starts tinier before growing.
+// NOTE: size animation is no longer used when X is pressed
+// but these are kept here in case you want to reuse later.
 let SIZE_ANIM_START_SCALE = 0.3;
-
-// Duration of the grow + fade-in animation (in seconds)
-// Larger value = slower animation.
 let SIZE_ANIM_DURATION_SEC = 10.0;
-
-// Target scale relative to baseSize (usually 1.0)
-// 1.0 = “normal” size, >1.0 = grow bigger than your base size.
 let SIZE_ANIM_TARGET_SCALE = 1.0;
 // ============================================================================
 
 // Layout
 let baseSize;
 
-// Internal animation state
+// Internal animation state (no longer triggered by X)
 let sizeAnimActive = false;
 let sizeAnimStartTime = 0;
 let currentSizeScale = 1.0;
-let currentOpacity = 0.0; // 0 = fully transparent, 1 = fully opaque
 
 // RMS threshold (kept in case you want to reuse later for Mic B)
 const MIC_B_THRESHOLD = 0.1;
+
+// ============================================================================
+// === FADE TO BLACK CONTROLS (TRIGGERED BY "Z") ==============================
+// Duration of fade (seconds)
+let FADE_DURATION_SEC = 4.0;
+
+let fadeActive = false;
+let fadeStartTime = 0;
+
+// NEW: once this is true, screen stays black forever
+let fullyBlack = false;
+// ============================================================================
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
 
   // === BASE FONT SIZE CALCULATION (USES THE CONTROLS ABOVE) ================
   baseSize = Math.min(windowWidth * BASE_FONT_RATIO, BASE_FONT_MAX_PX);
-  currentSizeScale = SIZE_ANIM_START_SCALE; // starting scale for animation
-  currentOpacity = 0.0;                     // start fully invisible
+  currentSizeScale = 1.0; // start at original scale
 
   // ===== Control Panel (minimal, no debug/metadata) =========================
   ctrlPanel = createDiv();
@@ -109,7 +109,7 @@ function setup() {
     cursor:pointer;
   `);
 
-  // X now ONLY hides/shows the panel (no animation trigger)
+  // UPDATED: use togglePanel() instead of directly hiding
   hideBtn.mousePressed(() => {
     togglePanel();
   });
@@ -139,11 +139,13 @@ function setup() {
   sensLabelText.style('font-weight:600;');
 
   // Slider: min 0.2x (less reactive) to 4x (super reactive)
-  // <<< DEFAULT VALUE is `DEFAULT_MIC_A_SENS` above
-  sensSlider = createSlider(0.2, 4.0, DEFAULT_MIC_A_SENS, 0.01).parent(row3);
+  sensSlider = createSlider(0.2, 4.0, 1.0, 0.01).parent(row3);
+// to change mic a default sensitivity : 
+// sensSlider = createSlider(0.2, 4.0, 2.0, 0.01).parent(row3);
+
   sensSlider.style('width:120px;');
 
-  sensLabel = createSpan('×' + DEFAULT_MIC_A_SENS.toFixed(2)).parent(row3);
+  sensLabel = createSpan('×1.00').parent(row3);
   sensLabel.style('min-width:40px; text-align:right;');
 
   micASensitivity = sensSlider.value();
@@ -170,7 +172,7 @@ function setup() {
     left: '50%',
     top: '50%',
     transform: 'translate(-50%, -50%)',
-    // fontSize is set via applyTextSize() so animation works
+    // fontSize is set via applyTextSize()
     lineHeight: '1',
     textAlign: 'center',
     whiteSpace: 'nowrap',
@@ -185,9 +187,7 @@ function setup() {
   micATextEl.textContent = 'GRATEFUL';
   micATextEl.style.fontVariationSettings = `'wght' 400, 'wdth' 100, 'slnt' 0, 'ital' 0`;
   micATextEl.style.fontStretch = '100%';
-
-  // Initial opacity: 0% (invisible on black screen)
-  micATextEl.style.opacity = '0';
+  micATextEl.style.opacity = '1';
 
   // Set initial text size based on baseSize and currentSizeScale
   applyTextSize();
@@ -205,7 +205,6 @@ function setup() {
   bufA = new Float32Array(1024);
   bufB = new Float32Array(1024);
 
-  // Initial screen: black
   background(0);
   noStroke();
   textFont('monospace');
@@ -219,7 +218,7 @@ function windowResized() {
   // Recompute baseSize when the window changes,
   // still using your editable font controls.
   baseSize = Math.min(windowWidth * BASE_FONT_RATIO, BASE_FONT_MAX_PX);
-  applyTextSize(); // keep animation scale + new baseSize in sync
+  applyTextSize(); // keep scale + new baseSize in sync
 }
 
 // ===== MIC ENABLE + DEVICE PICKER ==========================================
@@ -308,9 +307,15 @@ function cleanupStreams() {
 
 // ===== DRAW LOOP — TEXT ONLY ===============================================
 function draw() {
-  background(0); // black background
+  background(0); // black background always
 
-  // Update text size + opacity animation if active
+  // If we've already finished fading, keep everything black & invisible forever.
+  if (fullyBlack) {
+    if (micATextEl) micATextEl.style.opacity = '0';
+    return;
+  }
+
+  // If you ever re-enable size animation, you can hook it here
   if (sizeAnimActive) {
     updateSizeAnimation();
   }
@@ -320,6 +325,30 @@ function draw() {
 
   updateMicADesign(rmsA);
   updateMicBDesign(rmsB); // currently does nothing (Mic B visual removed)
+
+  // === FADE TO BLACK ON "Z" ================================================
+  if (fadeActive) {
+    const elapsedSec = (millis() - fadeStartTime) / 1000;
+    let t = clamp(elapsedSec / FADE_DURATION_SEC, 0, 1);
+
+    // Canvas overlay
+    noStroke();
+    fill(0, t * 255);
+    rect(0, 0, width, height);
+
+    // Fade out the white "GRATEFUL" text (DOM element)
+    const textOpacity = 1 - t;
+    micATextEl.style.opacity = textOpacity.toFixed(3);
+
+    if (t >= 1) {
+      fadeActive = false;
+      fullyBlack = true;        // <<< lock into black forever
+      micATextEl.style.opacity = '0';
+    }
+  } else {
+    // Ensure fully visible when not fading (before the permanent black)
+    micATextEl.style.opacity = '1';
+  }
 }
 
 // ===== AUDIO → DESIGN MAPPING ===============================================
@@ -341,17 +370,14 @@ function updateMicBDesign(rmsB) {
   // You can use `rmsB` later if you want to add something.
 }
 
-// ===== SIZE + OPACITY ANIMATION HELPERS ====================================
+// ===== SIZE ANIMATION HELPERS (NOT USED BY X ANYMORE) ======================
 
-// Called when you want to start the animation.
-// NOW TRIGGERED BY KEY "Z" (see keyPressed below).
 function startSizeAnimation() {
+  // NOTE: not called from togglePanel anymore.
   sizeAnimActive = true;
   sizeAnimStartTime = millis();
   currentSizeScale = SIZE_ANIM_START_SCALE;
-  currentOpacity = 0.0;
   applyTextSize();
-  micATextEl.style.opacity = currentOpacity.toFixed(2);
 }
 
 function updateSizeAnimation() {
@@ -363,15 +389,10 @@ function updateSizeAnimation() {
   const eased = easeOutCubic(t);
 
   currentSizeScale = lerp(SIZE_ANIM_START_SCALE, SIZE_ANIM_TARGET_SCALE, eased);
-  currentOpacity   = lerp(0.0, 1.0, eased); // fade from 0% → 100% opacity
-
   applyTextSize();
-  micATextEl.style.opacity = currentOpacity.toFixed(2);
 
   if (t >= 1) {
     sizeAnimActive = false;
-    currentOpacity = 1.0;
-    micATextEl.style.opacity = '1';
   }
 }
 
@@ -388,19 +409,21 @@ function easeOutCubic(t) {
 
 // ===== PANEL TOGGLE + KEY HANDLER ==========================================
 
-// EDIT HERE if you want different keys:
-// - "X" → toggle panel only
-// - "Z" → start text animation (size + opacity)
 function keyPressed() {
+  // X → just toggle panel, NO scale-up animation anymore
   if (key === 'x' || key === 'X') {
-    togglePanel();           // ONLY hide/show panel now
-  } else if (key === 'z' || key === 'Z') {
-    startSizeAnimation();    // trigger GRATEFUL fade-in + grow animation
+    togglePanel();
+  }
+
+  // Z → start fade to black (only if not already permanently black)
+  if ((key === 'z' || key === 'Z') && !fullyBlack) {
+    fadeActive = true;
+    fadeStartTime = millis();
   }
 }
 
 // This function handles open/close of the control panel.
-// NO LONGER tied to the animation.
+// NOTE: size animation removed when panel is hidden.
 function togglePanel() {
   if (!ctrlPanel) return;
 

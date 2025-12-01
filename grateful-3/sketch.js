@@ -1,11 +1,13 @@
 // === TWO-MIC VARIABLE FONT — DOT REACTIVE SCENE ============================
 // Both Mic A & Mic B → WeStacksVariable
-// Mic A → Center "." (SHPE: loud → 1, quiet → 3, very big)
-// Mic B → Many pink "." in middle 1/3 screen, random positions, ticker to the
-//         right with constant speed, SHPE mapped same as Mic A
+// Mic A → Center "." (SHPE: loud → 1, quiet → 5, very big)
+// Mic B → Many pink "." across the ENTIRE screen, random positions, ticker to
+//         the right with individual speeds, SHPE mapped same as Mic A.
+//         About 70% of Mic B dots are IN FRONT of Mic A; the rest are behind.
 // ============================================================================
 
 let ctrlPanel, statusSpan, enableBtn, startBtn;
+let panelVisible = true; // <<< panel visibility flag
 let hideBtn;
 let selA, selB;
 
@@ -21,28 +23,47 @@ const fontFamilies = [FONT_A, FONT_B];
 let fontsReady = false;
 
 // DOM elements for text
-let micATextEl;          // center "."
-let micBWrapper = null;  // container for Mic B dots
-let micBDots = [];       // { elt, x, y }
+let micATextEl;                 // center "."
+// Split Mic B wrapper into BACK and FRONT to get true z-index layering
+let micBWrapperFront = null;    // front-layer dots (above white)
+let micBWrapperBack  = null;    // back-layer dots (behind white)
+let micBDots = [];              // { elt, x, y, speed, isFront }
 
+// Layout
 let baseSize;
+let baseFontSize;        // <<< base font size for center star (before scaling)
 
 // Audio → shape mapping parameters
 const RMS_MAX = 0.15;    // base sensitivity (higher = less sensitive)
 const SHAPE_MIN = 1;     // loud
 const SHAPE_MAX = 5;     // quiet
 
+// ===== CENTER STAR SIZE SCALE (LOUDER = BIGGER) ============================
+// <<< EDIT THESE TO CONTROL HOW MUCH THE WHITE STAR GROWS WITH VOLUME >>>
+let MIC_A_SCALE_MIN = 0.8;  // quietest scale (smaller)
+let MIC_A_SCALE_MAX = 1.6;  // loudest scale (bigger)
+// ==========================================================================
+
 // Sensitivity for Mic A & B (multipliers)
-let sensAFactor = 1.0;
+let sensAFactor = 0.5;
 let sensBFactor = 1.0;
 
 // Slider + labels
 let sensALabel, sensASlider;
 let sensBLabel, sensBSlider;
 
+// ===== MIC B DOTS — EDITABLE SETTINGS ======================================
+
+// <<< EDIT MIC B SPEED HERE: min & max ticker speed (pixels per frame) >>>
+let MIC_B_SPEED_MIN = 0.5;   // slowest dots
+let MIC_B_SPEED_MAX = 4.0;   // fastest dots
+
+// ===========================================================================
+
 function setup() {
   createCanvas(windowWidth, windowHeight);
   baseSize = Math.min(windowWidth * 0.14, 160);
+  baseFontSize = baseSize * 7;  // <<< base font size for center star
 
   // ===== Control Panel (minimal, no debug/metadata) =========================
   ctrlPanel = createDiv();
@@ -78,7 +99,10 @@ function setup() {
     text-align:center;
     cursor:pointer;
   `);
-  hideBtn.mousePressed(() => { ctrlPanel.hide(); });
+  hideBtn.mousePressed(() => {
+    ctrlPanel.hide();
+    panelVisible = false; // <<< keep state in sync
+  });
 
   const topRow = createDiv().parent(ctrlPanel)
     .style('display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:14px;');
@@ -141,18 +165,19 @@ function setup() {
     position: 'fixed',
     left: '50%',
     top: '10%',
+    // NOTE: transform will be updated every frame to include scale()
     transform: 'translate(-50%, -50%)',
-    fontSize: `${(baseSize * 7).toFixed(1)}px`,
+    fontSize: `${baseFontSize.toFixed(1)}px`,   // <<< base font size
     fontFamily: `"${FONT_A}", system-ui, sans-serif`,
     color: '#ffffff',
-    willChange: 'font-variation-settings',
-    zIndex: 3
+    willChange: 'font-variation-settings, transform',
+    zIndex: 3   // center dot layer
   });
 
   micATextEl.textContent = '.';
   micATextEl.style.fontVariationSettings = `'SHPE' ${SHAPE_MAX}`; // quiet default
 
-  // ===== Dots for Mic B in middle 1/3 of screen ============================
+  // ===== Dots for Mic B — NOW FULL SCREEN VERTICALLY ========================
   createMicBDots();
 
   // ===== Font loading (best-effort) ========================================
@@ -176,57 +201,91 @@ function setup() {
 }
 
 function createMicBDots(count = 80) {
-  if (micBWrapper) micBWrapper.remove();
+  // Remove old wrappers if any
+  if (micBWrapperFront) micBWrapperFront.remove();
+  if (micBWrapperBack)  micBWrapperBack.remove();
 
-  micBWrapper = document.createElement('div');
-  micBWrapper.id = 'micBWrapper';
-  document.body.appendChild(micBWrapper);
+  // BACK layer (behind white center dot)
+  micBWrapperBack = document.createElement('div');
+  micBWrapperBack.id = 'micBWrapperBack';
+  document.body.appendChild(micBWrapperBack);
 
-  Object.assign(micBWrapper.style, {
+  Object.assign(micBWrapperBack.style, {
     position: 'fixed',
     left: '0',
     top: '0',
     width: '100vw',
     height: '100vh',
     pointerEvents: 'none',
-    zIndex: 2, // under micAText, above canvas
+    zIndex: 2, // behind micAText (zIndex 3)
+    overflow: 'hidden'
+  });
+
+  // FRONT layer (in front of white center dot)
+  micBWrapperFront = document.createElement('div');
+  micBWrapperFront.id = 'micBWrapperFront';
+  document.body.appendChild(micBWrapperFront);
+
+  Object.assign(micBWrapperFront.style, {
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    width: '100vw',
+    height: '100vh',
+    pointerEvents: 'none',
+    zIndex: 4, // in front of micAText (zIndex 3)
     overflow: 'hidden'
   });
 
   micBDots = [];
 
   const h = windowHeight;
-  const yMin = h / 4;
-  const yMax = (2 * h) / 3;
+
+  // <<< NOW FULL HEIGHT: use entire screen vertically for dots >>>
+  const yMin = 0;
+  const yMax = h;
+
+  // Exactly 70% of dots in the FRONT layer, 30% in the BACK
+  const frontCount = Math.round(count * 0.7);
 
   for (let i = 0; i < count; i++) {
     const span = document.createElement('span');
     span.textContent = '.';
+
+    // Random position across entire screen
+    let x = Math.random() * windowWidth;
+    let y = yMin + Math.random() * (yMax - yMin);
+
+    // Random speed between MIC_B_SPEED_MIN and MIC_B_SPEED_MAX
+    const speed = MIC_B_SPEED_MIN + Math.random() * (MIC_B_SPEED_MAX - MIC_B_SPEED_MIN);
+
+    const isFront = i < frontCount; // first 70% front, rest back
+
     Object.assign(span.style, {
       position: 'absolute',
       fontFamily: `"${FONT_B}", system-ui, sans-serif`,
       fontSize: 'min(18vw, 108px)',
       color: '#ff7ac8',
-      willChange: 'transform, font-variation-settings'
+      willChange: 'transform, font-variation-settings',
+      transform: `translate(${x}px, ${y}px)`,
+      fontVariationSettings: `'SHPE' ${SHAPE_MAX}`,
+      zIndex: 1 // zIndex inside each wrapper; wrapper decides front/back
     });
 
-    let x = Math.random() * windowWidth;
-    let y = yMin + Math.random() * (yMax - yMin);
+    // Attach to the appropriate layer wrapper
+    (isFront ? micBWrapperFront : micBWrapperBack).appendChild(span);
 
-    span.style.transform = `translate(${x}px, ${y}px)`;
-    span.style.fontVariationSettings = `'SHPE' ${SHAPE_MAX}`;
-
-    micBWrapper.appendChild(span);
-    micBDots.push({ elt: span, x, y });
+    micBDots.push({ elt: span, x, y, speed, isFront });
   }
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   baseSize = Math.min(windowWidth * 0.14, 160);
-  micATextEl.style.fontSize = `${(baseSize * 7).toFixed(1)}px`;
+  baseFontSize = baseSize * 7; // <<< recompute base font size on resize
+  micATextEl.style.fontSize = `${baseFontSize.toFixed(1)}px`;
 
-  // Recreate dots to stay in the middle 1/3 of the new window
+  // Recreate dots to stay full-screen in the new window
   createMicBDots(micBDots.length || 80);
 }
 
@@ -343,7 +402,20 @@ function draw() {
   updateMicBDesign(rmsB);
 }
 
-// ===== AUDIO → DESIGN MAPPING ===============================================
+function keyPressed() {
+  // Press X (or x) to toggle the control panel
+  if (key === 'x' || key === 'X') {
+    panelVisible = !panelVisible;
+    if (panelVisible) {
+      ctrlPanel.show();
+    } else {
+      ctrlPanel.hide();
+    }
+  }
+}
+
+
+// ===== AUDIO → DESIGN MAPPING ==============================================
 
 function audioToShape(effectiveRms) {
   // Map (scaled) RMS 0..RMS_MAX → SHAPE_MAX..SHAPE_MIN (quiet → 5, loud → 1)
@@ -352,11 +424,21 @@ function audioToShape(effectiveRms) {
 }
 
 function updateMicADesign(rmsA) {
-  // Apply Mic A sensitivity
   const effective = rmsA * sensAFactor;
   const shape = audioToShape(effective);
+
+  // SHPE axis
   micATextEl.style.fontVariationSettings = `'SHPE' ${shape.toFixed(2)}`;
+
+  // ===== SIZE REACTIVITY (LOUDER = BIGGER) =================================
+  let scale = map(effective, 0, RMS_MAX, MIC_A_SCALE_MIN, MIC_A_SCALE_MAX);
+  scale = clamp(scale, MIC_A_SCALE_MIN, MIC_A_SCALE_MAX);
+
+  // <<< KEEP DOT VISUALLY CENTERED EVEN WHEN SCALING >>>
+  micATextEl.style.transformOrigin = "50% 76%";
+  micATextEl.style.transform = `translate(-50%, -50%) scale(${scale})`;
 }
+
 
 function updateMicBDesign(rmsB) {
   // Apply Mic B sensitivity
@@ -368,12 +450,11 @@ function updateMicBDesign(rmsB) {
     d.elt.style.fontVariationSettings = `'SHPE' ${shape.toFixed(2)}`;
   }
 
-  // Ticker movement to the right with CONSTANT speed (not audio-reactive)
-  const speed = 3; // tweak this if you want faster/slower overall
-
   const w = windowWidth;
+
+  // Each dot uses its OWN speed (between MIC_B_SPEED_MIN and MIC_B_SPEED_MAX)
   for (const d of micBDots) {
-    d.x += speed;
+    d.x += d.speed;
     if (d.x > w + 20) {
       d.x = -20; // wrap from left
     }

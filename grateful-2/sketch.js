@@ -1,12 +1,17 @@
 // === TWO-MIC VARIABLE FONT — TEXT-ONLY REACTIVE SCENE =======================
-// Mic A → Center "GRATEFUL" (WeTravelogueVariableRoman, weight reacts to volume)
+// Mic A → Center "GRATEFUL" (WeTravelogueVariableRoman, weight + letter-spacing
+//        both react to volume; louder = heavier + more spaced out)
 // Mic B → 5 rows of "GRATEFUL" (WeStacksVariable, pink, letters appear
-//           one by one in random order once mic B volume passes a threshold)
+//           one by one in random order at a regular interval when you press Z,
+//           AND SHPE axis (pink stars) is audio-reactive 0 → 3)
 // ============================================================================
 
 let ctrlPanel, statusSpan, enableBtn, startBtn;
 let hideBtn;
 let selA, selB;
+
+// Panel visibility flag (for X key + close button)
+let panelVisible = true;
 
 let devices = [];
 let streamA = null, streamB = null;
@@ -27,13 +32,34 @@ let micBLetters = [];    // flat array of all letter spans for random reveal
 // Layout
 let baseSize;
 
-// Sensitivity / threshold (controlled by sliders)
-let sensAFactor   = 2.63; // Mic A sensitivity (weight)
-let micBThreshold = 0.21; // Mic B threshold (letters); lower = more sensitive
+// Sensitivity (controlled by slider)
+let sensAFactor   = 0.50; // Mic A sensitivity (weight)
+
+// === Mic A LETTER-SPACING RANGE (EDIT THESE) ================================
+// Quiet = LETTER_SPACING_MIN (em), Loud = LETTER_SPACING_MAX (em)
+const LETTER_SPACING_MIN = 0.02; // <<< smaller spacing at low volume
+const LETTER_SPACING_MAX = 0.30; // <<< bigger spacing at high volume
+
+// === Mic B LETTER REVEAL (TIME-BASED, TRIGGERED BY Z) ======================
+// Time gap between each new letter (in milliseconds)
+// (Can be adjusted via slider)
+let micBRevealCooldownMs = 200; // <<< default: 1 second between reveals
+
+let lastMicBRevealTime = -Infinity;
+let micBRevealActive = false; // <<< true = letters currently popping up
+
+// === Mic B SHPE mapping for pink stars =====================================
+// Quietest → SHPE = MICB_SHAPE_MIN
+// Loudest  → SHPE = MICB_SHAPE_MAX
+// You can tweak these three values.
+const MICB_SHAPE_MIN     = 0.0;  // <<< quietest shape value
+const MICB_SHAPE_MAX     = 3.0;  // <<< loudest shape value
+const MICB_SHAPE_RMS_MAX = 0.25; // <<< volume level where the pink SHPE animation reaches its maximum shape
 
 // Slider + label elements
 let sensALabel, sensASlider;
-let sensBLabel, sensBSlider;
+let sensBLabel, sensBSlider;   // now controls interval
+let micBRMSLabel;              // live Mic B volume readout
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -73,7 +99,7 @@ function setup() {
     text-align:center;
     cursor:pointer;
   `);
-  hideBtn.mousePressed(() => { ctrlPanel.hide(); });
+  hideBtn.mousePressed(togglePanel);
 
   const topRow = createDiv().parent(ctrlPanel)
     .style('display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:14px;');
@@ -99,7 +125,7 @@ function setup() {
   enableBtn.mousePressed(enableMicsOnce);
   startBtn.mousePressed(startStreams);
 
-  // === Sliders for sensitivity / threshold =================================
+  // === Sliders for sensitivity / interval ==================================
   const sensRow = createDiv().parent(ctrlPanel)
     .style('margin-top:8px; display:flex; flex-direction:column; gap:4px;');
 
@@ -112,15 +138,20 @@ function setup() {
     .parent(sensRow);
   sensASlider.style('width', '160px');
 
-  // Mic B threshold slider
-  sensBLabel = createSpan(`Mic B threshold (letters): ${micBThreshold.toFixed(2)}`)
-    .parent(sensRow)
-    .style('font-weight:600;');
+  // Pink letter interval slider (for Z-triggered reveal)
+  sensBLabel = createSpan(
+    `Pink letter interval (ms): ${micBRevealCooldownMs}`
+  ).parent(sensRow).style('font-weight:600;');
 
-  // Lower value = more sensitive; 0.01–0.5 is a nice range to play with
-  sensBSlider = createSlider(0.01, 0.5, micBThreshold, 0.01)
+  // 100 ms (very fast) → 2000 ms (very slow)
+  sensBSlider = createSlider(100, 2000, micBRevealCooldownMs, 50)
     .parent(sensRow);
   sensBSlider.style('width', '160px');
+
+  // Live Mic B RMS label so you can see actual volume value
+  micBRMSLabel = createSpan(
+    `Mic B volume (RMS): 0.000 — controls pink stars (SHPE axis)`
+  ).parent(sensRow);
 
   // ===== Central text for Mic A ============================================
   micATextEl = document.getElementById('micAText');
@@ -139,11 +170,11 @@ function setup() {
     textAlign: 'center',
     whiteSpace: 'nowrap',
     textTransform: 'uppercase',
-    willChange: 'font-variation-settings, font-stretch',
+    willChange: 'font-variation-settings, font-stretch, letter-spacing',
     fontOpticalSizing: 'none',
     fontFamily: `"${FONT_A}", system-ui, sans-serif`,
     color: '#ffffff',
-    letterSpacing: '0.04em',
+    letterSpacing: `${LETTER_SPACING_MIN}em`, // <<< initial spacing = quiet value
     zIndex: 3
   });
   micATextEl.textContent = 'GRATEFUL';
@@ -211,11 +242,14 @@ function createMicBRows() {
       alignItems: 'center',
       fontFamily: `"${FONT_B}", system-ui, sans-serif`,
       textTransform: 'uppercase',
-      fontSize: 'min(12vw, 80px)',
+      fontSize: 'min(35vw, 150px)',
       color: '#ff7ac8', // pink
       letterSpacing: '0.1em',
       opacity: 1,
-      top: `${15 + i * 14}%`, // spread vertically
+      top: `${4 + i * 18}%`, // spread vertically
+
+      // Default SHPE value for pink stars — quietest
+      fontVariationSettings: `'SHPE' ${MICB_SHAPE_MIN}, 'wght' 400, 'wdth' 100, 'slnt' 0, 'ital' 0`
     });
 
     // Create spans per letter, all initially hidden
@@ -238,6 +272,34 @@ function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   baseSize = Math.min(windowWidth * 0.14, 160);
   micATextEl.style.fontSize = `${baseSize.toFixed(1)}px`;
+}
+
+// ===== PANEL TOGGLE (button + X key) =======================================
+function togglePanel() {
+  if (!ctrlPanel) return;
+  panelVisible = !panelVisible;
+  if (panelVisible) ctrlPanel.show();
+  else ctrlPanel.hide();
+}
+
+function keyPressed() {
+  if (key === 'x' || key === 'X') {
+    togglePanel();
+  }
+  if (key === 'z' || key === 'Z') {
+    startMicBLetterReveal();
+  }
+}
+
+// Start a new time-based reveal run when Z is pressed
+function startMicBLetterReveal() {
+  if (!micBLetters.length) return;
+  // Reset all letters to hidden
+  for (const span of micBLetters) {
+    span.style.opacity = '0';
+  }
+  micBRevealActive = true;
+  lastMicBRevealTime = millis();
 }
 
 // ===== MIC ENABLE + DEVICE PICKER ==========================================
@@ -273,7 +335,6 @@ async function loadAudioInputs() {
     selB.option(label, d.deviceId);
   });
 
-  // Try helpful defaults
   const idxBuiltIn = devices.findIndex(d => /built.?in/i.test(d.label));
   const idxIPhone  = devices.findIndex(d => /iphone|continuity|external/i.test(d.label));
   if (idxBuiltIn >= 0) selA.selected(devices[idxBuiltIn].deviceId);
@@ -314,7 +375,7 @@ async function startStreams() {
     srcA.connect(anA);
     srcB.connect(anB);
 
-    statusSpan.html('  Streaming… Mic A → weight, Mic B → reveal letters');
+    statusSpan.html('  Streaming… Mic A → weight + spacing, Mic B → pink stars (SHPE)');
     loop();
   } catch (e) {
     console.error(e);
@@ -341,40 +402,86 @@ function draw() {
   }
 
   if (sensBSlider) {
-    micBThreshold = sensBSlider.value();
+    micBRevealCooldownMs = sensBSlider.value();
     if (sensBLabel) {
-      sensBLabel.html(`Mic B threshold (letters): ${micBThreshold.toFixed(2)}`);
+      sensBLabel.html(
+        `Pink letter interval (ms): ${micBRevealCooldownMs}`
+      );
     }
   }
 
   const rmsA = analyserRMS(anA, bufA);
   const rmsB = analyserRMS(anB, bufB);
 
-  // These two functions are where you map audio → design:
+  // Update live Mic B volume label
+  if (micBRMSLabel) {
+    micBRMSLabel.html(
+      `Mic B volume (RMS): ${rmsB.toFixed(3)} — controls pink stars (SHPE axis)`
+    );
+  }
+
+  // Map audio → design
   updateMicADesign(rmsA);
   updateMicBDesign(rmsB);
 }
 
 // ===== AUDIO → DESIGN MAPPING ===============================================
-// Tweak THESE functions to change how reactive the visuals are.
 
 function updateMicADesign(rmsA) {
-  // Mic A: controls WEIGHT of center "GRATEFUL"
-  // Apply sensitivity factor to Mic A
   const adjusted = rmsA * sensAFactor;
-  // Map adjusted 0..0.25 → wght 100..900 (clamped)
+
+  // Weight mapping (same as before)
   const wght = clamp(map(adjusted, 0, 0.25, 100, 900), 200, 900);
   micATextEl.style.fontVariationSettings =
     `'wght' ${wght.toFixed(1)}, 'wdth' 100, 'slnt' 0, 'ital' 0`;
+
+  // === LETTER-SPACING MAPPING (LOUDER = MORE SPACED) =======================
+  // Map adjusted volume 0 → 0.25 to LETTER_SPACING_MIN → LETTER_SPACING_MAX
+  let spacing = map(
+    adjusted,
+    0,
+    0.25,
+    LETTER_SPACING_MIN,
+    LETTER_SPACING_MAX
+  );
+  spacing = clamp(spacing, LETTER_SPACING_MIN, LETTER_SPACING_MAX);
+  micATextEl.style.letterSpacing = `${spacing.toFixed(3)}em`;
 }
 
 function updateMicBDesign(rmsB) {
-  // Mic B: reveal letters one by one once volume crosses threshold
-  if (!anB) return;
+  // === 1) LETTER REVEAL — TIME-BASED, TRIGGERED BY Z =======================
+  if (micBRevealActive) {
+    const now = millis();
+    const elapsed = now - lastMicBRevealTime;
 
-  if (rmsB > micBThreshold) {
-    // Only ever reveal 1 letter per frame
-    revealRandomMicBLetter();
+    if (elapsed >= micBRevealCooldownMs) {
+      const revealed = revealRandomMicBLetter();
+      lastMicBRevealTime = now;
+
+      // If no more hidden letters, stop the reveal run
+      if (!revealed) {
+        micBRevealActive = false;
+      }
+    }
+  }
+
+  // === 2) Pink "stars" SHPE audioreactivity (Mic B) ========================
+  // Map rmsB 0..MICB_SHAPE_RMS_MAX → SHPE MICB_SHAPE_MIN..MICB_SHAPE_MAX
+  let shpeVal = map(
+    rmsB,
+    0,
+    MICB_SHAPE_RMS_MAX,
+    MICB_SHAPE_MIN,
+    MICB_SHAPE_MAX
+  );
+  shpeVal = clamp(shpeVal, MICB_SHAPE_MIN, MICB_SHAPE_MAX);
+
+  const fv =
+    `'SHPE' ${shpeVal.toFixed(2)}, ` +
+    `'wght' 400, 'wdth' 100, 'slnt' 0, 'ital' 0`;
+
+  for (const row of micBRows) {
+    row.style.fontVariationSettings = fv;
   }
 }
 
@@ -388,20 +495,21 @@ function analyserRMS(analyser, buf) {
   return Math.sqrt(sumSq / buf.length);
 }
 
+// Returns true if a letter was revealed, false if there were none left
 function revealRandomMicBLetter() {
-  if (!micBLetters.length) return;
+  if (!micBLetters.length) return false;
 
-  // Collect indices of currently hidden letters
   const hiddenIndices = [];
   for (let i = 0; i < micBLetters.length; i++) {
     if (micBLetters[i].style.opacity === '' || micBLetters[i].style.opacity === '0') {
       hiddenIndices.push(i);
     }
   }
-  if (!hiddenIndices.length) return;
+  if (!hiddenIndices.length) return false;
 
   const idx = hiddenIndices[Math.floor(Math.random() * hiddenIndices.length)];
   micBLetters[idx].style.opacity = '1';
+  return true;
 }
 
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }

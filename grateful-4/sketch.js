@@ -9,6 +9,10 @@ let ctrlPanel, statusSpan, enableBtn, startBtn;
 let hideBtn;
 let selA, selB;
 
+// === PANEL VISIBILITY FLAG (X to toggle) ===================================
+let panelVisible = true; // true = panel shown, false = hidden
+// ============================================================================
+
 let devices = [];
 let streamA = null, streamB = null;
 let anA = null, anB = null;
@@ -36,11 +40,15 @@ const MIC_A_MAX_LEVEL   = 0.50; // level that gives max stroke
 const MIC_A_MIN_STROKE  = 0.0;  // stroke at silence (px)
 const MIC_A_MAX_STROKE  = 8.0;  // stroke at loudest (px)
 
-// Shared scale reactivity (driven by Mic B)
-const SCALE_MIN_LEVEL   = 0.00; // volume floor for scaling
-const SCALE_MAX_LEVEL   = 0.30; // volume that gives max scale
-const SCALE_MIN         = 0.9;  // base scale
-const SCALE_MAX         = 2.7;  // loud scale
+// === Mic B SCALE MAPPING — EDIT THESE 4 FOR SCALE BEHAVIOR =================
+// Mic B volume → scale thresholds (input range)
+const SCALE_MIN_LEVEL   = 0.00; // MIC B SCALE MIN LEVEL  (quiet)
+const SCALE_MAX_LEVEL   = 0.30; // MIC B SCALE MAX LEVEL  (loud)
+
+// Mic B visual scale range (output range)
+const SCALE_MIN         = 0.9;  // MIC B SCALE MIN (smaller text)
+const SCALE_MAX         = 2.7;  // MIC B SCALE MAX (bigger text)
+// ============================================================================
 
 // Colors
 const COLOR_MIC_A_FILL   = '#FFFFFF'; // Mic A fill (white)
@@ -96,7 +104,12 @@ function setup() {
     text-align:center;
     cursor:pointer;
   `);
-  hideBtn.mousePressed(() => { ctrlPanel.hide(); });
+
+  // Close button should also update the flag
+  hideBtn.mousePressed(() => {
+    ctrlPanel.hide();
+    panelVisible = false; // <<< keep in sync with X toggle
+  });
 
   const topRow = createDiv().parent(ctrlPanel)
     .style('display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:14px;');
@@ -396,7 +409,7 @@ function updateMicBDesign(rmsB) {
   // Sensitivity multiplier for Mic B
   const effectiveB = rmsB * sensBFactor;
 
-  // Mic B controls the overall SCALE of all 3 rows (both A & B)
+  // Mic B controls the SCALE of the PINK layer
   let s = map(
     effectiveB,
     SCALE_MIN_LEVEL,
@@ -406,15 +419,38 @@ function updateMicBDesign(rmsB) {
   );
   s = clamp(s, SCALE_MIN, SCALE_MAX);
 
+  // White layer stays locked at the quietest scale
+  const sWhite = SCALE_MIN; // <<< this keeps quiet-look identical
+//   or this
+// const sWhite = 1.0;
+
+
   if (micBWrapper) {
+    // Pink GRATEFUL scales with Mic B like original
     micBWrapper.style.transform = `translate(-50%, -50%) scale(${s})`;
   }
 
   if (micAWrapper) {
+    // White GRATEFUL: same offset as original, but fixed scale
     micAWrapper.style.transform =
-      `translate(calc(-50% + ${MIC_A_OFFSET_X}), calc(-50% + ${MIC_A_OFFSET_Y})) scale(${s})`;
+      `translate(calc(-50% + ${MIC_A_OFFSET_X}), calc(-50% + ${MIC_A_OFFSET_Y})) scale(${sWhite})`;
   }
 }
+
+
+// ===== KEYBOARD HANDLER — TOGGLE PANEL WITH "X" ============================
+// Press "x" or "X" to open/close the control panel
+function keyPressed() {
+  if (key === 'x' || key === 'X') {
+    panelVisible = !panelVisible;
+    if (panelVisible) {
+      ctrlPanel.show();
+    } else {
+      ctrlPanel.hide();
+    }
+  }
+}
+// ===========================================================================
 
 // ===== HELPERS ==============================================================
 
