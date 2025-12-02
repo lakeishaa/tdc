@@ -58,6 +58,28 @@ let sensBLabel, sensBSlider;
 let MIC_B_SPEED_MIN = 0.5;   // slowest dots
 let MIC_B_SPEED_MAX = 4.0;   // fastest dots
 
+
+// ===== Center Dot Y-Offset Slider (for white "*") ===========================
+let centerDotY = 15;  // <<< DEFAULT: push downward a bit (adjust anytime)
+
+let centerRow = createDiv().parent(ctrlPanel).style('margin-top', '6px');
+
+let centerYLabel = createSpan(`Center "*" Y-position (%): ${centerDotY.toFixed(1)}%`)
+  .parent(centerRow)
+  .style('font-weight:600;');
+
+let centerYSlider = createSlider(0, 50, centerDotY, 0.1)
+  .parent(centerRow)
+  .style('width', '160px');
+
+centerYSlider.input(() => {
+  centerDotY = centerYSlider.value();
+  centerYLabel.html(`Center "*" Y-position (%): ${centerDotY.toFixed(1)}%`);
+  micATextEl.style.top = `${centerDotY}%`;    // <<< update position live
+});
+
+
+
 // ===========================================================================
 
 function setup() {
@@ -161,18 +183,18 @@ function setup() {
     micATextEl.id = 'micAText';
     document.body.appendChild(micATextEl);
   }
-  Object.assign(micATextEl.style, {
-    position: 'fixed',
-    left: '50%',
-    top: '10%',
-    // NOTE: transform will be updated every frame to include scale()
-    transform: 'translate(-50%, -50%)',
-    fontSize: `${baseFontSize.toFixed(1)}px`,   // <<< base font size
-    fontFamily: `"${FONT_A}", system-ui, sans-serif`,
-    color: '#ffffff',
-    willChange: 'font-variation-settings, transform',
-    zIndex: 3   // center dot layer
-  });
+Object.assign(micATextEl.style, {
+  position: 'fixed',
+  left: '50%',
+  top: `${centerDotY}%`,     // <<< now controlled by slider
+  transform: 'translate(-50%, -50%)',
+  fontSize: `${baseFontSize.toFixed(1)}px`,
+  fontFamily: `"${FONT_A}", system-ui, sans-serif`,
+  color: '#ffffff',
+  willChange: 'font-variation-settings, transform',
+  zIndex: 3
+});
+
 
   micATextEl.textContent = '.';
   micATextEl.style.fontVariationSettings = `'SHPE' ${SHAPE_MAX}`; // quiet default
@@ -412,8 +434,51 @@ function keyPressed() {
       ctrlPanel.hide();
     }
   }
+  if (key === 'm' || key === 'M'){
+    startMicsFromKeyboard();
+  }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+// Start mics via "M" key, even if panel is hidden
+async function startMicsFromKeyboard() {
+  try {
+    // 1) Make sure we have permission + device list
+    if (!devices.length) {
+      await enableMicsOnce(); // this will also call loadAudioInputs()
+    }
+
+    // 2) Auto-select default devices if none chosen in the dropdowns
+    if (devices.length) {
+      // Mic A: first device
+      if (!selA.value()) {
+        selA.value(devices[0].deviceId);
+      }
+
+      // Mic B: second device if available, otherwise also first
+      if (!selB.value()) {
+        const idxB = (devices.length > 1) ? 1 : 0;
+        selB.value(devices[idxB].deviceId);
+      }
+    }
+
+    // 3) If streams not already running, start them
+    if (!streamA || !streamB) {
+      await startStreams();
+    }
+
+    if (statusSpan) {
+      statusSpan.html(" Streaming… (started with 'M')");
+    }
+  } catch (e) {
+    console.error(e);
+    if (statusSpan) {
+      statusSpan.html(" Error starting mics with 'M'.");
+    }
+  }
+}
 
 // ===== AUDIO → DESIGN MAPPING ==============================================
 

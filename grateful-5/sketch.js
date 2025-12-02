@@ -416,11 +416,57 @@ function keyPressed() {
   }
 
   // Z → start fade to black (only if not already permanently black)
-  if ((key === 'z' || key === 'Z') && !fullyBlack) {
+  if ((key === 'p' || key === 'p') && !fullyBlack) {
     fadeActive = true;
     fadeStartTime = millis();
   }
+  
+   if (key === 'm' || key === 'M'){
+    startMicsFromKeyboard();
+  }
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+// Start mics via "M" key, even if panel is hidden
+async function startMicsFromKeyboard() {
+  try {
+    // 1) Make sure we have permission + device list
+    if (!devices.length) {
+      await enableMicsOnce(); // this will also call loadAudioInputs()
+    }
+
+    // 2) Auto-select default devices if none chosen in the dropdowns
+    if (devices.length) {
+      // Mic A: first device
+      if (!selA.value()) {
+        selA.value(devices[0].deviceId);
+      }
+
+      // Mic B: second device if available, otherwise also first
+      if (!selB.value()) {
+        const idxB = (devices.length > 1) ? 1 : 0;
+        selB.value(devices[idxB].deviceId);
+      }
+    }
+
+    // 3) If streams not already running, start them
+    if (!streamA || !streamB) {
+      await startStreams();
+    }
+
+    if (statusSpan) {
+      statusSpan.html(" Streaming… (started with 'M')");
+    }
+  } catch (e) {
+    console.error(e);
+    if (statusSpan) {
+      statusSpan.html(" Error starting mics with 'M'.");
+    }
+  }
+}
+
 
 // This function handles open/close of the control panel.
 // NOTE: size animation removed when panel is hidden.

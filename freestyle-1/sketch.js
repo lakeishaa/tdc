@@ -1,6 +1,7 @@
 // === TWO-MIC VARIABLE FONT — SINGLE JAZZ OVERLAP SCENE =====================
-// Mic A → Top "JAZZ" (WeSpoliaVariable, white fill;
-//          louder = thicker *outer* black stroke via text-shadow)
+// Mic A → Top "JAZZY" (WeSpoliaExplodeVariable, white fill;
+//          reacts to volume with its own EXPLODE axis
+//          and is 50% less sensitive than the big pink JAZZ)
 // Mic B → Bottom "JAZZ" (WeSpoliaExplodeVariable, pink/purple;
 //          louder = larger scale from center + more "explode";
 //          when loud enough, color toggles ONCE (pink ↔ purple)
@@ -19,7 +20,8 @@ let anA = null, anB = null;
 let bufA, bufB;
 
 // Fonts
-const FONT_A = 'WeSpoliaVariable';
+// <<< Mic A font uses the explode version too
+const FONT_A = 'WeSpoliaExplodeVariable';
 const FONT_B = 'WeSpoliaExplodeVariable';
 const fontFamilies = [FONT_A, FONT_B];
 let fontsReady = false;
@@ -29,54 +31,95 @@ let micAWrapper, micBWrapper;
 let micARows = [];
 let micBRows = [];
 
-// ===== Mic A stroke settings ===============================================
+// ===== FONT WEIGHT SETTINGS (EDIT HERE) ====================================
+// <<< Mic A "JAZZY" font weight (lighter look). Try 100–400
+const MIC_A_FONT_WEIGHT = 200;
+
+// <<< Mic B "JAZZ" font weight (boldest look). Try 700–900
+const MIC_B_FONT_WEIGHT = 900;
+
+// ===== Mic A stroke settings (EDIT MIN/MAX HERE) ===========================
 
 const MIC_A_MIN_LEVEL   = 0.01;
 const MIC_A_MAX_LEVEL   = 0.50;
 const MIC_A_MIN_STROKE  = 0.0;
-const MIC_A_MAX_STROKE  = 12.0;   // stroke at loudest (px)
+const MIC_A_MAX_STROKE  = 0.0;   // stroke at loudest (px)
 
 // ===== Mic B scale & color settings ========================================
 
-const SCALE_MIN_LEVEL   = 0.00;
-const SCALE_MAX_LEVEL   = 0.30;
+// Base scale of Mic A (top "JAZZY")
+const MIC_A_BASE_SCALE = 1.0; // <<< change if you want Mic A bigger/smaller
 
-const SCALE_MIN         = 1.0;
-const SCALE_MAX         = 3.0;
+// At quietest volume, Mic B scale (1.5 = 150% of Mic A)
+const MIC_B_SCALE_QUIET = 1.5; // <<< Mic B size when quiet (relative to Mic A)
+
+// At loudest volume, Mic B scale
+const MIC_B_SCALE_LOUD  = 3.0; // <<< Mic B size when loudest
+
+// These are the input volume bounds for scaling
+const SCALE_MIN_LEVEL   = 0.00; // <<< lower RMS bound for scaling
+const SCALE_MAX_LEVEL   = 0.30; // <<< upper RMS bound for scaling
+
+// Derived scale constants
+const SCALE_MIN         = MIC_B_SCALE_QUIET;
+const SCALE_MAX         = MIC_B_SCALE_LOUD;
 
 const COLOR_MIC_A_FILL   = '#FFFFFF';
 const COLOR_MIC_B_ALT_1  = '#E2BAFF'; // purple-ish
 const COLOR_MIC_B_ALT_2  = '#FBAFCE'; // pink
 
 // volume threshold to *trigger* color toggle
-const MIC_B_COLOR_THRESHOLD = 0.18;
+const MIC_B_COLOR_THRESHOLD = 0.18; // <<< change when color toggles
 
 // cooldown between color toggles (ms)
-const MIC_B_COOLDOWN_MS = 5000;
+const MIC_B_COOLDOWN_MS = 5000; // <<< time between color toggles
 
 // color toggle state
 let micBColorToggle = false;              // false → ALT_2, true → ALT_1
 let micBLastToggleTime = 0;               // millis() of last toggle
 
-// sensitivities
-let sensAFactor = 1.0;
-let sensBFactor = 1.0;
+// ===== Mic sensitivity + slider ranges (EDIT HERE) =========================
+
+// <<< Mic A sensitivity slider range
+const SENS_A_MIN = 0.5;
+const SENS_A_MAX = 5.0;
+
+// <<< Mic B sensitivity slider range
+const SENS_B_MIN = 0.5;
+const SENS_B_MAX = 5.0;
+
+// <<< DEFAULT slider values:
+// Mic B is the "reference" (1.0×), Mic A is 0.5× = 50% less sensitive
+let sensAFactor = 0.5; // <<< default Mic A sensitivity (half of Mic B)
+let sensBFactor = 1.0; // <<< default Mic B sensitivity
+
+// Slider DOM refs
 let sensALabel, sensASlider;
 let sensBLabel, sensBSlider;
 
-// ===== Mic B explode axis settings =========================================
+// ===== EXPLODE AXIS TAG ====================================================
 
-// 🔧 Change this if the axis tag is different in your font
-// e.g. "EXPL", "SPLO", etc.
+// 🔧 Change this if the axis tag is different in your font (e.g. "EXPL", "SPLO", etc.)
 const EXPLODE_AXIS = "EXPL";
 
-const EXPLODE_MIN_LEVEL = 0.00; // input volume lower bound
-const EXPLODE_MAX_LEVEL = 0.30; // input volume upper bound (tweak if needed)
+// ===== Mic A EXPLODE settings (EDIT HERE) ==================================
+// <<< Mic A explode mapping: RMS → axis value
+const EXPLODE_A_MIN_LEVEL = 0.00;  // <<< quiet bound for Mic A explode
+const EXPLODE_A_MAX_LEVEL = 0.30;  // <<< loud bound for Mic A explode
 
-const EXPLODE_MIN = 0.0;        // axis min
-const EXPLODE_MAX = 100.0;      // axis max (or whatever your font supports)
+const EXPLODE_A_MIN = 0.0;         // <<< min explode for Mic A
+const EXPLODE_A_MAX = 60.0;        // <<< max explode for Mic A (smaller than Mic B)
 
-// 🔴 TEST MODE: if true, ignore mic & force a big explode value
+// ===== Mic B EXPLODE settings (EDIT HERE) ==================================
+// <<< Min/max RMS that drive the explode axis for Mic B
+const EXPLODE_MIN_LEVEL = 0.00; 
+const EXPLODE_MAX_LEVEL = 0.30; 
+
+// <<< Explode axis value range for Mic B (adjust to taste)
+const EXPLODE_MIN = 0.0;        
+const EXPLODE_MAX = 100.0;      
+
+// 🔴 TEST MODE: if true, ignore mic & force a big explode value for BOTH mics
 const TEST_EXPLODE_MODE = false;
 const TEST_EXPLODE_VALUE = 120; // try 80, 120, 200, etc.
 
@@ -151,16 +194,21 @@ function setup() {
   const sensRow = createDiv().parent(ctrlPanel)
     .style('margin-top:8px; display:flex; flex-direction:column; gap:4px;');
 
+  // <<< THIS LABEL UPDATES LIVE; DEFAULT VALUE IS sensAFactor ABOVE
   sensALabel = createSpan(
-    `Mic A sensitivity (stroke): ${sensAFactor.toFixed(2)}`
+    `Mic A sensitivity (stroke + explode): ${sensAFactor.toFixed(2)}`
   ).parent(sensRow).style('font-weight:600;');
-  sensASlider = createSlider(0.5, 5, sensAFactor, 0.01).parent(sensRow);
+
+  // <<< CHANGE RANGE VIA SENS_A_MIN / SENS_A_MAX, DEFAULT VIA sensAFactor
+  sensASlider = createSlider(SENS_A_MIN, SENS_A_MAX, sensAFactor, 0.01).parent(sensRow);
   sensASlider.style('width', '160px');
 
   sensBLabel = createSpan(
     `Mic B sensitivity (scale + color + explode): ${sensBFactor.toFixed(2)}`
   ).parent(sensRow).style('font-weight:600;');
-  sensBSlider = createSlider(0.5, 5, sensBFactor, 0.01).parent(sensRow);
+
+  // <<< CHANGE RANGE VIA SENS_B_MIN / SENS_B_MAX, DEFAULT VIA sensBFactor
+  sensBSlider = createSlider(SENS_B_MIN, SENS_B_MAX, sensBFactor, 0.01).parent(sensRow);
   sensBSlider.style('width', '160px');
 
   // Text layers
@@ -218,14 +266,15 @@ function createLayeredText() {
 }
 
 function createRowsForWrapper(wrapper, rowsArray, isMicA) {
-  const word = 'JAZZ';
+  // <<< MIC A / MIC B TEXT CONTENT
+  // Mic A: "JAZZY", Mic B: "JAZZ"
+  const word = isMicA ? 'JAZZY' : 'JAZZ';
 
   const row = document.createElement('div');
   rowsArray.push(row);
 
   const fillColor = isMicA ? COLOR_MIC_A_FILL : COLOR_MIC_B_ALT_2; // start pink
-
-  const fontForThisRow = isMicA ? FONT_A : FONT_B; // Mic A = WeSpoliaVariable, Mic B = WeSpoliaExplodeVariable
+  const fontForThisRow = isMicA ? FONT_A : FONT_B; 
 
   Object.assign(row.style, {
     position: 'absolute',
@@ -244,11 +293,13 @@ function createRowsForWrapper(wrapper, rowsArray, isMicA) {
   });
 
   if (isMicA) {
-    // Mic A: weight only
-    row.style.fontVariationSettings = `"wght" 400`;
+    // Mic A: lighter weight + explode axis starts at 0
+    row.style.fontVariationSettings =
+      `"wght" ${MIC_A_FONT_WEIGHT}, "${EXPLODE_AXIS}" 0`;
   } else {
-    // Mic B: weight + explode axis starts at 0
-    row.style.fontVariationSettings = `"wght" 400, "${EXPLODE_AXIS}" 0`;
+    // Mic B: bold weight + explode axis starts at 0
+    row.style.fontVariationSettings =
+      `"wght" ${MIC_B_FONT_WEIGHT}, "${EXPLODE_AXIS}" 0`;
   }
 
   if (isMicA) {
@@ -340,7 +391,7 @@ async function startStreams() {
     srcA.connect(anA);
     srcB.connect(anB);
 
-    statusSpan.html('  Streaming… Mic A → stroke, Mic B → scale + explode + color toggle w/ cooldown');
+    statusSpan.html('  Streaming… Mic A → explode + stroke, Mic B → scale + explode + color toggle');
     loop();
   } catch (e) {
     console.error(e);
@@ -360,7 +411,7 @@ function draw() {
 
   if (sensASlider) {
     sensAFactor = sensASlider.value();
-    sensALabel.html(`Mic A sensitivity (stroke): ${sensAFactor.toFixed(2)}`);
+    sensALabel.html(`Mic A sensitivity (stroke + explode): ${sensAFactor.toFixed(2)}`);
   }
   if (sensBSlider) {
     sensBFactor = sensBSlider.value();
@@ -379,8 +430,10 @@ function draw() {
 function updateMicADesign(rmsA) {
   if (!micARows.length) return;
 
+  // Mic A: 50% less sensitive by default via sensAFactor (0.5 vs 1.0 for B)
   const effectiveA = rmsA * sensAFactor;
 
+  // Stroke width mapping (Mic A)
   let strokeWidth = map(
     effectiveA,
     MIC_A_MIN_LEVEL,
@@ -390,7 +443,25 @@ function updateMicADesign(rmsA) {
   );
   strokeWidth = clamp(strokeWidth, MIC_A_MIN_STROKE, MIC_A_MAX_STROKE);
 
+  // ===== Mic A EXPLODE mapping ============================================
+  let explodeAVal;
+  if (TEST_EXPLODE_MODE) {
+    explodeAVal = TEST_EXPLODE_VALUE;
+  } else {
+    explodeAVal = map(
+      effectiveA,
+      EXPLODE_A_MIN_LEVEL,
+      EXPLODE_A_MAX_LEVEL,
+      EXPLODE_A_MIN,
+      EXPLODE_A_MAX
+    );
+    explodeAVal = clamp(explodeAVal, EXPLODE_A_MIN, EXPLODE_A_MAX);
+  }
+
   micARows.forEach(row => {
+    // weight + explode axis from Mic A
+    row.style.fontVariationSettings =
+      `"wght" ${MIC_A_FONT_WEIGHT}, "${EXPLODE_AXIS}" ${explodeAVal.toFixed(1)}`;
     applyOuterStroke(row, strokeWidth);
   });
 }
@@ -400,20 +471,21 @@ function updateMicBDesign(rmsB) {
 
   const effectiveB = rmsB * sensBFactor;
 
-  // Scale from center
+  // Scale from center (Mic B)
   let s = map(
     effectiveB,
     SCALE_MIN_LEVEL,
     SCALE_MAX_LEVEL,
-    SCALE_MIN,
-    SCALE_MAX
+    MIC_B_SCALE_QUIET,
+    MIC_B_SCALE_LOUD
   );
-  s = clamp(s, SCALE_MIN, SCALE_MAX);
+  s = clamp(s, MIC_B_SCALE_QUIET, MIC_B_SCALE_LOUD);
   micBWrapper.style.transform = `translate(-50%, -50%) scale(${s})`;
 
-  // Top stays fixed scale
+  // Top stays fixed scale (Mic A)
   if (micAWrapper) {
-    micAWrapper.style.transform = `translate(-50%, -50%) scale(1)`;
+    micAWrapper.style.transform =
+      `translate(-50%, -50%) scale(${MIC_A_BASE_SCALE})`;
   }
 
   // Color toggling with cooldown
@@ -427,14 +499,11 @@ function updateMicBDesign(rmsB) {
 
   const currentColor = micBColorToggle ? COLOR_MIC_B_ALT_1 : COLOR_MIC_B_ALT_2;
 
-  // ===== EXPLODE AXIS CONTROL ============================================
+  // ===== Mic B EXPLODE mapping ============================================
   let explodeVal;
-
   if (TEST_EXPLODE_MODE) {
-    // 🔴 Test mode: ignore audio, force a visible explode value
     explodeVal = TEST_EXPLODE_VALUE;
   } else {
-    // Normal mode: map audio → explode axis
     explodeVal = map(
       effectiveB,
       EXPLODE_MIN_LEVEL,
@@ -447,9 +516,9 @@ function updateMicBDesign(rmsB) {
 
   micBRows.forEach(row => {
     row.style.color = currentColor;
-    // Mic B: update weight + explode axis
+    // Mic B: bold weight + explode axis
     row.style.fontVariationSettings =
-      `"wght" 400, "${EXPLODE_AXIS}" ${explodeVal.toFixed(1)}`;
+      `"wght" ${MIC_B_FONT_WEIGHT}, "${EXPLODE_AXIS}" ${explodeVal.toFixed(1)}`;
   });
 }
 
@@ -479,7 +548,53 @@ function keyPressed() {
     if (panelVisible) ctrlPanel.show();
     else ctrlPanel.hide();
   }
+  
+   if (key === 'm' || key === 'M'){
+    startMicsFromKeyboard();
+  }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+// Start mics via "M" key, even if panel is hidden
+async function startMicsFromKeyboard() {
+  try {
+    // 1) Make sure we have permission + device list
+    if (!devices.length) {
+      await enableMicsOnce(); // this will also call loadAudioInputs()
+    }
+
+    // 2) Auto-select default devices if none chosen in the dropdowns
+    if (devices.length) {
+      // Mic A: first device
+      if (!selA.value()) {
+        selA.value(devices[0].deviceId);
+      }
+
+      // Mic B: second device if available, otherwise also first
+      if (!selB.value()) {
+        const idxB = (devices.length > 1) ? 1 : 0;
+        selB.value(devices[idxB].deviceId);
+      }
+    }
+
+    // 3) If streams not already running, start them
+    if (!streamA || !streamB) {
+      await startStreams();
+    }
+
+    if (statusSpan) {
+      statusSpan.html(" Streaming… (started with 'M')");
+    }
+  } catch (e) {
+    console.error(e);
+    if (statusSpan) {
+      statusSpan.html(" Error starting mics with 'M'.");
+    }
+  }
+}
+
 
 // ===== HELPERS ==============================================================
 

@@ -257,10 +257,10 @@ function setup() {
   const sensALabelText = createSpan('Mic A sensitivity:').parent(row3);
   sensALabelText.style('font-weight:600;');
 
-  sensASlider = createSlider(0.2, 4.0, 0.7, 0.01).parent(row3);
+  sensASlider = createSlider(0.2, 4.0, 1.0, 0.01).parent(row3);
   sensASlider.style('width:120px;');
 
-  sensALabel = createSpan('×0.7').parent(row3);
+  sensALabel = createSpan('×1.0').parent(row3);
   sensALabel.style('min-width:40px; text-align:right;');
 
   micASensitivity = sensASlider.value();
@@ -276,10 +276,10 @@ function setup() {
   const sensBLabelText = createSpan('Mic B sensitivity:').parent(row4);
   sensBLabelText.style('font-weight:600;');
 
-  sensBSlider = createSlider(0.2, 4.0, 0.0, 0.01).parent(row4);
+  sensBSlider = createSlider(0.2, 4.0, 1.0, 0.01).parent(row4);
   sensBSlider.style('width:120px;');
 
-  sensBLabel = createSpan('×0.0').parent(row4);
+  sensBLabel = createSpan('×1.0').parent(row4);
   sensBLabel.style('min-width:40px; text-align:right;');
 
   micBSensitivity = sensBSlider.value();
@@ -479,7 +479,54 @@ function keyPressed() {
       }
     }
   }
+  
+   if (key === 'm' || key === 'M'){
+    startMicsFromKeyboard();
+  }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+// Start mics via "M" key, even if panel is hidden
+async function startMicsFromKeyboard() {
+  try {
+    // 1) Make sure we have permission + device list
+    if (!devices.length) {
+      await enableMicsOnce(); // this will also call loadAudioInputs()
+    }
+
+    // 2) Auto-select default devices if none chosen in the dropdowns
+    if (devices.length) {
+      // Mic A: first device
+      if (!selA.value()) {
+        selA.value(devices[0].deviceId);
+      }
+
+      // Mic B: second device if available, otherwise also first
+      if (!selB.value()) {
+        const idxB = (devices.length > 1) ? 1 : 0;
+        selB.value(devices[idxB].deviceId);
+      }
+    }
+
+    // 3) If streams not already running, start them
+    if (!streamA || !streamB) {
+      await startStreams();
+    }
+
+    if (statusSpan) {
+      statusSpan.html(" Streaming… (started with 'M')");
+    }
+  } catch (e) {
+    console.error(e);
+    if (statusSpan) {
+      statusSpan.html(" Error starting mics with 'M'.");
+    }
+  }
+}
+
+//////////////// i added this
 
 // ===== MIC ENABLE + DEVICE PICKER (TWO MICS) ================================
 async function enableMicsOnce() {

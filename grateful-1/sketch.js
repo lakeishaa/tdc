@@ -391,13 +391,42 @@ function easeOutCubic(t) {
 // EDIT HERE if you want different keys:
 // - "X" → toggle panel only
 // - "Z" → start text animation (size + opacity)
+// ===== PANEL TOGGLE + KEY HANDLER ==========================================
+
+// EDIT HERE if you want different keys:
+// - "X" → toggle panel only
+// - "P" → start text animation (size + opacity)
+// - "M" → enable mics (if needed) + start streams
 function keyPressed() {
   if (key === 'x' || key === 'X') {
-    togglePanel();           // ONLY hide/show panel now
-  } else if (key === 'z' || key === 'Z') {
-    startSizeAnimation();    // trigger GRATEFUL fade-in + grow animation
+    // ONLY hide/show panel
+    togglePanel();
+  } else if (key === 'p' || key === 'P') {
+    // trigger GRATEFUL fade-in + grow animation
+    startSizeAnimation();
+  } else if (key === 'm' || key === 'M') {
+    // new: start mics with keyboard
+    startMicsWithKeyboard();
   }
 }
+
+// New helper: press "M" → enable mics (if not done) + start both streams
+async function startMicsWithKeyboard() {
+  try {
+    // If we haven't listed devices yet, run the normal enable flow first
+    if (devices.length === 0) {
+      await enableMicsOnce();
+    }
+    // Then start the streams (same as pressing the "Start" button)
+    await startStreams();
+  } catch (e) {
+    console.error(e);
+    if (statusSpan) {
+      statusSpan.html('  Could not start mics from keyboard. Check permissions.');
+    }
+  }
+}
+
 
 // This function handles open/close of the control panel.
 // NO LONGER tied to the animation.
