@@ -40,7 +40,7 @@ const SHAPE_MAX = 5;     // quiet
 
 // ===== CENTER STAR SIZE SCALE (LOUDER = BIGGER) ============================
 // <<< EDIT THESE TO CONTROL HOW MUCH THE WHITE STAR GROWS WITH VOLUME >>>
-let MIC_A_SCALE_MIN = 0.8;  // quietest scale (smaller)
+let MIC_A_SCALE_MIN = 1.3;  // quietest scale (smaller)
 let MIC_A_SCALE_MAX = 1.6;  // loudest scale (bigger)
 // ==========================================================================
 
@@ -60,7 +60,7 @@ let MIC_B_SPEED_MAX = 4.0;   // fastest dots
 
 
 // ===== Center Dot Y-Offset Slider (for white "*") ===========================
-let centerDotY = 15;  // <<< DEFAULT: push downward a bit (adjust anytime)
+let centerDotY = 25;  // <<< DEFAULT: push downward a bit (adjust anytime)
 
 let centerRow = createDiv().parent(ctrlPanel).style('margin-top', '6px');
 
