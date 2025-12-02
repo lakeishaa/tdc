@@ -90,8 +90,8 @@ const SENS_B_MAX = 5.0;
 
 // <<< DEFAULT slider values:
 // Mic B is the "reference" (1.0×), Mic A is 0.5× = 50% less sensitive
-let sensAFactor = 0.5; // <<< default Mic A sensitivity (half of Mic B)
-let sensBFactor = 1.0; // <<< default Mic B sensitivity
+let sensAFactor = 1.5; // <<< default Mic A sensitivity (half of Mic B)
+let sensBFactor = 2.0; // <<< default Mic B sensitivity
 
 // Slider DOM refs
 let sensALabel, sensASlider;
